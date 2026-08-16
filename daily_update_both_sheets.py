@@ -49,6 +49,16 @@ try:
 except ValueError:
     raise SystemExit(f"❌ TAX_MULTIPLIER must be a number, got {_tax_raw!r}. See SETUP.md.")
 
+# Where column L (Leads) comes from:
+#   "sheet1" — unique lead ids counted from the Sheet1 tab (needs that tab)
+#   "meta"   — lead actions reported by the Meta API (no extra tab needed)
+LEADS_SOURCE = os.getenv("LEADS_SOURCE", "sheet1").strip().lower()
+if LEADS_SOURCE not in ("sheet1", "meta"):
+    raise SystemExit(
+        f'❌ LEADS_SOURCE must be "sheet1" or "meta", got "{LEADS_SOURCE}". '
+        f'Use "meta" if your sheet has no Sheet1 tab. See SETUP.md.'
+    )
+
 
 def load_accounts():
     """Load the ad-account → column mapping from accounts.json.
@@ -133,15 +143,27 @@ def fetch_one_day(ad_account, day_str):
         return {"spend": 0, "leads": 0, "lpv": 0}
     row = rows[0]
     spend = float(row.get("spend", 0))
-    leads = 0
     lpv = 0
+    lead_actions = {}
     for action in row.get("actions", []):
         at = action["action_type"]
         val = int(float(action["value"]))
         if "lead" in at.lower():
-            leads += val
+            lead_actions[at] = val
         if at == "landing_page_view":
             lpv += val
+
+    # Meta reports the SAME conversions under several overlapping action types
+    # (e.g. "lead", "onsite_web_lead", "offsite_conversion.fb_pixel_lead" all
+    # returning 139). Summing them multiplies the real count, so prefer the
+    # canonical "lead" total and otherwise take the max — never the sum.
+    if "lead" in lead_actions:
+        leads = lead_actions["lead"]
+    elif lead_actions:
+        leads = max(lead_actions.values())
+    else:
+        leads = 0
+
     return {"spend": spend, "leads": leads, "lpv": lpv}
 
 def count_sheet1_leads(sh, day):
@@ -176,6 +198,17 @@ def count_sheet1_leads(sh, day):
         if matched and col_d[i]:
             unique.add(col_d[i].strip())
     return len(unique)
+
+def leads_for_day(sh, day, account_data):
+    """Lead count for `day` from the configured source (see LEADS_SOURCE).
+
+    "meta" reuses the lead actions already fetched by fetch_one_day, so it costs
+    no extra API calls and needs no Sheet1 tab. Note the two sources count
+    different things: Sheet1 counts unique lead ids, Meta counts lead actions.
+    """
+    if LEADS_SOURCE == "meta":
+        return sum(d.get("leads", 0) for d in account_data.values())
+    return count_sheet1_leads(sh, day)
 
 def get_gc():
     scopes = ["https://spreadsheets.google.com/feeds",
@@ -326,7 +359,7 @@ def update_sheet(gc, today):
     # Fetch today's data (may be partial at 00:06 AM)
     print(f"\n📊 Fetching TODAY's data ({today.isoformat()})...")
     today_data, today_lpv = fetch_all_accounts(today.isoformat())
-    today_sheet1_leads = count_sheet1_leads(sh, today)
+    today_sheet1_leads = leads_for_day(sh, today, today_data)
     today_cells = build_row_cells(6, today_day, today_display, today_data, today_lpv,
                                   sheet1_leads=today_sheet1_leads)
 
@@ -378,16 +411,19 @@ def update_sheet(gc, today):
                 except (ValueError, TypeError):
                     sheet_leads = 0
 
-                # Also count Sheet1 directly for yesterday's date
-                sheet1_leads = count_sheet1_leads(sh, day)
-
-                # Prefer the higher value (sheet1 reflects full day, sheet cell may be
-                # manually corrected higher — take whichever is bigger to avoid undercounting)
-                frozen_leads = max(sheet_leads, sheet1_leads)
-                print(f"   📖 Yesterday source: J={frozen_j}, sheet_L={sheet_leads}, "
-                      f"sheet1_count={sheet1_leads} → using {frozen_leads}")
-
+                # Fetch first — the "meta" leads source reads from this data
                 yest_data, yest_lpv = fetch_all_accounts(day.isoformat())
+
+                # Recount leads for yesterday from the configured source
+                counted_leads = leads_for_day(sh, day, yest_data)
+
+                # Prefer the higher value (the recount reflects the full day, and the
+                # sheet cell may have been manually corrected higher — take whichever
+                # is bigger to avoid undercounting)
+                frozen_leads = max(sheet_leads, counted_leads)
+                print(f"   📖 Yesterday source: J={frozen_j}, sheet_L={sheet_leads}, "
+                      f"{LEADS_SOURCE}_count={counted_leads} → using {frozen_leads}")
+
                 extra_cells += build_row_cells(found_row, day_name, day_display, yest_data, yest_lpv,
                                                frozen_leads=frozen_leads, frozen_j=frozen_j)
             # k >= 2 and present — historical row, leave untouched (immutable)
@@ -403,7 +439,7 @@ def update_sheet(gc, today):
         ws.insert_row([], index=expected_row)
         time.sleep(1)
         fill_data, fill_lpv = fetch_all_accounts(day.isoformat())
-        fill_leads = count_sheet1_leads(sh, day)
+        fill_leads = leads_for_day(sh, day, fill_data)
         extra_cells += build_row_cells(expected_row, day_name, day_display, fill_data, fill_lpv,
                                        frozen_leads=fill_leads, frozen_j=0)
         if k == 1:

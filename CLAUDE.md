@@ -10,6 +10,11 @@ Ad accounts come from `accounts.json` (`{"Name": ["act_<id>", "<column letter>"]
 credentials come from `.env` locally and repo secrets in CI. Don't reintroduce
 hardcoded account ids or sheet ids into `daily_update_both_sheets.py`.
 
+`LEADS_SOURCE` (`sheet1` default, or `meta`) selects where column L comes from,
+and `TAX_MULTIPLIER` scales column I. Both are optional env vars with safe
+defaults — keep them wired through the workflow's `.env` step, or setting the
+secret silently does nothing.
+
 In CI, `accounts.json` is written from the `ACCOUNTS_JSON` secret — a change to
 the committed file alone does not affect scheduled runs. Update both.
 

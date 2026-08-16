@@ -165,7 +165,27 @@ print(json.loads(subprocess.run(["curl","-s",url],capture_output=True,text=True)
 If the sheet really is stale, the cheapest fix is to let the next scheduled run
 refresh it. Only write by hand when you need the number now.
 
-### Leads look wrong — match all three date formats
+### Leads look wrong — first check which source is configured
+
+`LEADS_SOURCE` decides where column L comes from:
+
+- **`sheet1`** (default) — unique lead ids counted from the `Sheet1` tab. Debug it
+  with the date-format check below.
+- **`meta`** — the lead count Meta reports, for sheets with no `Sheet1` tab.
+  Nothing to debug in the sheet; compare against the API directly.
+
+Switching source changes the number legitimately (Meta counts lead events;
+`Sheet1` counts unique people), so a step-change in CPL right after a config
+change is expected, not a bug.
+
+> **Never sum Meta's lead action types.** Meta reports the same conversions under
+> several overlapping names — `lead`, `onsite_web_lead`,
+> `offsite_conversion.fb_pixel_lead` and others all return the *same* figure.
+> Adding them up multiplies the real count (one real case: 139 leads reported as
+> 556). `fetch_one_day` takes the canonical `lead` type, else the max — never the
+> sum. Keep it that way.
+
+### `sheet1` source: leads look wrong — match all three date formats
 
 `Sheet1` timestamps are not consistent. Counting only one format silently
 undercounts. This caused a real incident: a day showed 139 leads instead of 275,

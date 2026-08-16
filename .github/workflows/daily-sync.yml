@@ -63,6 +63,9 @@ jobs:
           echo "META_TOKEN=${{ secrets.META_TOKEN }}" > .env
           echo "CREDS_FILE=gcp-creds.json" >> .env
           echo "SHEET_ID=${{ secrets.SHEET_ID }}" >> .env
+          # Optional settings — defaults apply when the secret isn't set
+          echo "TAX_MULTIPLIER=${{ secrets.TAX_MULTIPLIER || '1.0' }}" >> .env
+          echo "LEADS_SOURCE=${{ secrets.LEADS_SOURCE || 'sheet1' }}" >> .env
 
       - name: Create Google credentials file
         run: echo "${{ secrets.GOOGLE_CREDS_JSON }}" | base64 -d > gcp-creds.json

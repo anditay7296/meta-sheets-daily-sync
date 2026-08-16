@@ -25,9 +25,13 @@ https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz.../edit
                                        └────────── this is your SHEET_ID ──────────┘
 ```
 
-Keep it handy. The sheet must have a tab named exactly **`Daily Reporting`**, and
-a **`Sheet1`** tab holding your leads (dates in column A, a lead identifier such
-as phone number in column D).
+Keep it handy. The sheet **must** have a tab named exactly **`Daily Reporting`** —
+that's where the daily rows go.
+
+A second tab named **`Sheet1`** is **optional**. If you have one (dates in column
+A, a lead identifier such as a phone number in column D), leads are counted from
+it as *unique* identifiers. **No `Sheet1`?** Set `LEADS_SOURCE=meta` in step 7 and
+the lead count comes straight from Meta instead — nothing else to set up.
 
 ## Step 2 — Create a Google service account
 
@@ -107,12 +111,18 @@ secret**. Add these four:
 | `GOOGLE_CREDS_JSON` | the step-2 JSON key, **base64-encoded** (see below) |
 | `ACCOUNTS_JSON` | the JSON from step 6, **plain, not encoded** |
 
-Optional — add this only if your sheet's "with tax" column should differ from the
-plain total:
+Optional — add either of these only if you need them:
 
 | Secret | Value |
 |---|---|
+| `LEADS_SOURCE` | `sheet1` (default) counts unique lead ids from your `Sheet1` tab. **Set it to `meta`** if your sheet has no `Sheet1` — the lead count then comes from Meta |
 | `TAX_MULTIPLIER` | number column I multiplies spend by; default `1.0` (no adjustment). E.g. `1.08` for 8% tax |
+
+> **The two lead sources count different things.** `Sheet1` counts *unique*
+> identifiers (one person = one lead, even if they submit twice). `meta` counts
+> the lead events Meta recorded. Meta's number is usually the higher of the two —
+> neither is "wrong", they just measure different points in your funnel. Pick one
+> and stay with it, so your CPL stays comparable day to day.
 
 `GOOGLE_CREDS_JSON` must be base64 — pasting raw JSON is the classic mistake. The
 run then fails at the **Create Google credentials file** step with a `base64:

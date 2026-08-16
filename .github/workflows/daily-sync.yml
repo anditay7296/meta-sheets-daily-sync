@@ -1,0 +1,86 @@
+name: Daily Meta Ads → Google Sheet Sync
+
+on:
+  schedule:
+    # ⚠️ GitHub always evaluates cron in UTC — the TZ set on the job below does
+    # NOT shift these times. Defaults target Asia/Kuala_Lumpur (UTC+8): subtract
+    # your own UTC offset from the local hour you want. If you change these,
+    # keep the self-heal run a few hours after the midnight run.
+    - cron: '6 16 * * *'  # 00:06 MYT — main run (16:06 UTC)
+    - cron: '6 1 * * *'   # 09:06 MYT — self-heal pass, repairs a missed/failed midnight run (01:06 UTC)
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: read
+  issues: write            # failure-alert step creates an issue
+
+# Never let two runs touch the sheet at once — the insert-row logic is not
+# concurrency-safe (simultaneous runs shift rows under each other).
+concurrency:
+  group: daily-sheet-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      # date.today() in the script must resolve to YOUR local date, not UTC.
+      # Set this to your own timezone (must match your ad accounts' timezone).
+      TZ: Asia/Kuala_Lumpur
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install gspread google-auth python-dotenv
+
+      - name: Check required secrets are set
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+          ACCOUNTS_JSON: ${{ secrets.ACCOUNTS_JSON }}
+        run: |
+          missing=""
+          [ -z "$META_TOKEN" ]        && missing="$missing META_TOKEN"
+          [ -z "$SHEET_ID" ]          && missing="$missing SHEET_ID"
+          [ -z "$GOOGLE_CREDS_JSON" ] && missing="$missing GOOGLE_CREDS_JSON"
+          [ -z "$ACCOUNTS_JSON" ]     && missing="$missing ACCOUNTS_JSON"
+          if [ -n "$missing" ]; then
+            echo "❌ Missing repo secret(s):$missing"
+            echo "Add them under Settings → Secrets and variables → Actions. See SETUP.md."
+            exit 1
+          fi
+
+      - name: Create .env file
+        run: |
+          echo "META_TOKEN=${{ secrets.META_TOKEN }}" > .env
+          echo "CREDS_FILE=gcp-creds.json" >> .env
+          echo "SHEET_ID=${{ secrets.SHEET_ID }}" >> .env
+
+      - name: Create Google credentials file
+        run: echo "${{ secrets.GOOGLE_CREDS_JSON }}" | base64 -d > gcp-creds.json
+
+      - name: Create accounts.json
+        env:
+          ACCOUNTS_JSON: ${{ secrets.ACCOUNTS_JSON }}
+        run: printf '%s' "$ACCOUNTS_JSON" > accounts.json
+
+      - name: Run daily sync
+        run: python3 daily_update_both_sheets.py
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "❌ Daily sheet sync failed — $(date '+%Y-%m-%d %H:%M MYT')" \
+            --body "The scheduled Meta Ads → Google Sheet sync failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

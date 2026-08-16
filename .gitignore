@@ -1,0 +1,12 @@
+# Secrets — never commit these
+.env
+*.json
+!accounts.json.example
+
+# Local config (comes from ACCOUNTS_JSON secret in CI)
+accounts.json
+
+# Logs and noise
+*.log
+__pycache__/
+.DS_Store

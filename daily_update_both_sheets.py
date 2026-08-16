@@ -51,7 +51,7 @@ except ValueError:
 
 # Where column L (Leads) comes from:
 #   "sheet1" — unique lead ids counted from the Sheet1 tab (needs that tab)
-#   "meta"   — lead actions reported by the Meta API (no extra tab needed)
+#   "meta"   — the "Results" column from Ads Manager (no extra tab needed)
 LEADS_SOURCE = os.getenv("LEADS_SOURCE", "sheet1").strip().lower()
 if LEADS_SOURCE not in ("sheet1", "meta"):
     raise SystemExit(
@@ -130,7 +130,7 @@ def fetch_one_day(ad_account, day_str):
     """Fetch one day of account-level data."""
     time_range = urllib.parse.quote(f'{{"since":"{day_str}","until":"{day_str}"}}')
     url = (f"https://graph.facebook.com/v21.0/{ad_account}/insights"
-           f"?fields=spend,actions"
+           f"?fields=spend,actions,results"
            f"&time_increment=1&level=account&limit=10"
            f"&time_range={time_range}"
            f"&access_token={META_TOKEN}")
@@ -153,16 +153,27 @@ def fetch_one_day(ad_account, day_str):
         if at == "landing_page_view":
             lpv += val
 
-    # Meta reports the SAME conversions under several overlapping action types
-    # (e.g. "lead", "onsite_web_lead", "offsite_conversion.fb_pixel_lead" all
-    # returning 139). Summing them multiplies the real count, so prefer the
-    # canonical "lead" total and otherwise take the max — never the sum.
-    if "lead" in lead_actions:
-        leads = lead_actions["lead"]
-    elif lead_actions:
-        leads = max(lead_actions.values())
-    else:
-        leads = 0
+    # Leads = the "Results" column in Ads Manager. Meta computes that per
+    # campaign objective and hands it back in the `results` field, so taking it
+    # verbatim always agrees with what the UI shows (and follows the objective:
+    # a lead campaign reports leads, a traffic campaign reports LPV, etc.).
+    leads = None
+    for entry in row.get("results", []):
+        for v in entry.get("values", []):
+            leads = (leads or 0) + int(float(v.get("value", 0)))
+
+    if leads is None:
+        # Older/edge accounts may not return `results`. Fall back to the
+        # canonical "lead" action — never the SUM of the lead-ish types, since
+        # Meta reports the same conversions under several overlapping names
+        # ("lead", "onsite_web_lead", "offsite_conversion.fb_pixel_lead" all
+        # returning the same figure), which would multiply the real count.
+        if "lead" in lead_actions:
+            leads = lead_actions["lead"]
+        elif lead_actions:
+            leads = max(lead_actions.values())
+        else:
+            leads = 0
 
     return {"spend": spend, "leads": leads, "lpv": lpv}
 

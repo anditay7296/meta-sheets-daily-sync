@@ -115,14 +115,15 @@ Optional — add either of these only if you need them:
 
 | Secret | Value |
 |---|---|
-| `LEADS_SOURCE` | `sheet1` (default) counts unique lead ids from your `Sheet1` tab. **Set it to `meta`** if your sheet has no `Sheet1` — the lead count then comes from Meta |
+| `LEADS_SOURCE` | `sheet1` (default) counts unique lead ids from your `Sheet1` tab. **Set it to `meta`** if your sheet has no `Sheet1` — column L then shows the **Results** column from Ads Manager |
 | `TAX_MULTIPLIER` | number column I multiplies spend by; default `1.0` (no adjustment). E.g. `1.08` for 8% tax |
 
-> **The two lead sources count different things.** `Sheet1` counts *unique*
-> identifiers (one person = one lead, even if they submit twice). `meta` counts
-> the lead events Meta recorded. Meta's number is usually the higher of the two —
-> neither is "wrong", they just measure different points in your funnel. Pick one
-> and stay with it, so your CPL stays comparable day to day.
+> **The two lead sources count different things.** `meta` gives you the exact
+> number in the **Results** column of Ads Manager — Meta works that out from each
+> campaign's objective, so it always agrees with the UI. `Sheet1` counts *unique*
+> identifiers in your own tab (one person = one lead, even if they submit twice),
+> which is usually the lower number. Neither is "wrong" — they measure different
+> points in your funnel. Pick one and stay with it so your CPL stays comparable.
 
 `GOOGLE_CREDS_JSON` must be base64 — pasting raw JSON is the classic mistake. The
 run then fails at the **Create Google credentials file** step with a `base64:

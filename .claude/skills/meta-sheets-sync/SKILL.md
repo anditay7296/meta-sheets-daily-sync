@@ -171,19 +171,30 @@ refresh it. Only write by hand when you need the number now.
 
 - **`sheet1`** (default) — unique lead ids counted from the `Sheet1` tab. Debug it
   with the date-format check below.
-- **`meta`** — the lead count Meta reports, for sheets with no `Sheet1` tab.
-  Nothing to debug in the sheet; compare against the API directly.
+- **`meta`** — the **Results** column from Ads Manager, for sheets with no
+  `Sheet1` tab. Verify by opening Ads Manager for that account and date; the
+  numbers should agree exactly.
 
-Switching source changes the number legitimately (Meta counts lead events;
-`Sheet1` counts unique people), so a step-change in CPL right after a config
-change is expected, not a bug.
+Switching source changes the number legitimately (`meta` counts what Ads Manager
+counts; `Sheet1` counts unique people), so a step-change in CPL right after a
+config change is expected, not a bug.
 
-> **Never sum Meta's lead action types.** Meta reports the same conversions under
-> several overlapping names — `lead`, `onsite_web_lead`,
-> `offsite_conversion.fb_pixel_lead` and others all return the *same* figure.
-> Adding them up multiplies the real count (one real case: 139 leads reported as
-> 556). `fetch_one_day` takes the canonical `lead` type, else the max — never the
-> sum. Keep it that way.
+**How `meta` is obtained.** `fetch_one_day` requests the `results` field and sums
+its `values`. Meta derives that per campaign objective, which is why it matches
+the UI and follows the objective (a lead campaign reports leads, a traffic
+campaign reports landing-page views). The response also carries an `indicator`
+naming the underlying metric — useful when a number looks surprising:
+
+```bash
+curl -s "https://graph.facebook.com/v21.0/act_<ID>/insights?fields=spend,results,cost_per_result&level=account&time_range=%7B%22since%22%3A%222026-08-15%22%2C%22until%22%3A%222026-08-15%22%7D&access_token=$META_TOKEN"
+```
+
+> **Never sum Meta's lead action types.** The fallback path (used only when
+> `results` is absent) must not add up the lead-ish action types — Meta reports
+> the same conversions under several overlapping names (`lead`,
+> `onsite_web_lead`, `offsite_conversion.fb_pixel_lead` … all returning the
+> *same* figure). Summing multiplies the real count; one real case turned 230
+> leads into 920. Take the canonical `lead` type, else the max — never the sum.
 
 ### `sheet1` source: leads look wrong — match all three date formats
 
